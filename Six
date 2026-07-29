@@ -1,0 +1,200 @@
+-- โหลด Rayfield UI Library พร้อมระบบกัน Error
+local Success, Rayfield = pcall(function()
+    return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+end)
+
+if not Success or not Rayfield then
+    warn("Failed to load Rayfield Library!")
+    return
+end
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- ค่าการตั้งค่าระบบ ESP
+local Box_Enabled = false
+local Tracers_Enabled = false
+local Box_Color = Color3.fromRGB(0, 0, 255) -- ค่าเริ่มต้นสีน้ำเงิน
+local Tracers_Color = Color3.fromRGB(170, 0, 255) -- ค่าเริ่มต้นสีม่วง
+
+-- สร้าง Window หลัก
+local Window = Rayfield:CreateWindow({
+   Name = "PRO SCRIPT | ESP Hub",
+   LoadingTitle = "Loading ESP Script...",
+   LoadingSubtitle = "by zxtata",
+   ConfigurationSaving = { Enabled = false },
+   Discord = { Enabled = false },
+   KeySystem = true, 
+   KeySettings = {
+      Title = "PRO SCRIPT - Key System",
+      Subtitle = "Enter Password to Access",
+      Note = "",
+      FileName = "ESPKeyConfig",
+      SaveKey = false,
+      GrabKeyFromSite = false,
+      Key = {"007"}
+   }
+})
+
+-- สร้าง Tab Visuals (ESP)
+local VisualsTab = Window:CreateTab("Visuals", 4483362458)
+
+local ESP_Cache = {}
+
+local function removeESP(player)
+    if ESP_Cache[player] then
+        if ESP_Cache[player].BoxGui then ESP_Cache[player].BoxGui:Destroy() end
+        if ESP_Cache[player].Tracer then ESP_Cache[player].Tracer:Remove() end
+        ESP_Cache[player] = nil
+    end
+end
+
+local function createESP(player)
+    if player == LocalPlayer then return end
+    removeESP(player)
+
+    local tracer = Drawing.new("Line")
+    tracer.Visible = false
+    tracer.Thickness = 1.5
+
+    ESP_Cache[player] = { Tracer = tracer }
+
+    local function setupChar(character)
+        if not character then return end
+        local hrp = character:WaitForChild("HumanoidRootPart", 5)
+        local hum = character:WaitForChild("Humanoid", 5)
+        if not hrp or not hum then return end
+
+        -- Box สี่เหลี่ยมครอบตัวผู้เล่น + ระยะทาง
+        local boxGui = Instance.new("BillboardGui")
+        boxGui.Name = "ESPBox"
+        boxGui.Adornee = hrp
+        boxGui.Size = UDim2.new(4, 0, 5.5, 0)
+        boxGui.AlwaysOnTop = true
+        boxGui.Enabled = false
+        boxGui.Parent = hrp
+
+        local boxFrame = Instance.new("Frame")
+        boxFrame.Size = UDim2.new(1, 0, 1, 0)
+        boxFrame.BackgroundTransparency = 1
+        boxFrame.Parent = boxGui
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Name = "BoxStroke"
+        stroke.Color = Box_Color
+        stroke.Thickness = 1.5
+        stroke.Parent = boxFrame
+
+        local infoLabel = Instance.new("TextLabel")
+        infoLabel.Name = "InfoLabel"
+        infoLabel.BackgroundTransparency = 1
+        infoLabel.Position = UDim2.new(0, 0, -0.3, 0)
+        infoLabel.Size = UDim2.new(1, 0, 0.25, 0)
+        infoLabel.Font = Enum.Font.SourceSansBold
+        infoLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- สีเหลืองตามต้องการ
+        infoLabel.TextSize = 14
+        infoLabel.Parent = boxGui
+
+        ESP_Cache[player].BoxGui = boxGui
+        ESP_Cache[player].BoxStroke = stroke
+        ESP_Cache[player].InfoLabel = infoLabel
+    end
+
+    if player.Character then setupChar(player.Character) end
+    player.CharacterAdded:Connect(setupChar)
+end
+
+-- อัปเดตการแสดงผล ESP แบบ Real-time
+RunService.RenderStepped:Connect(function()
+    local myChar = LocalPlayer.Character
+    local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
+
+    for player, data in pairs(ESP_Cache) do
+        local char = player.Character
+        if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") and myHrp then
+            local hrp = char.HumanoidRootPart
+            local hum = char.Humanoid
+
+            if hum.Health > 0 then
+                -- อัปเดตสีกล่องสี่เหลี่ยม
+                if data.BoxStroke then
+                    data.BoxStroke.Color = Box_Color
+                end
+
+                if data.BoxGui then 
+                    data.BoxGui.Enabled = Box_Enabled 
+                    if Box_Enabled then
+                        local distance = math.floor((myHrp.Position - hrp.Position).Magnitude)
+                        data.InfoLabel.Text = player.DisplayName .. " [" .. distance .. "m]"
+                    end
+                end
+
+                -- อัปเดตเส้น Tracer ให้ชี้ไปที่ "ขอบบนสุดของกล่อง"
+                if data.Tracer then
+                    data.Tracer.Color = Tracers_Color
+                    if Tracers_Enabled then
+                        -- คำนวณตำแหน่งขอบบนของตัวละคร (บวกความสูงขึ้นไปเพื่อให้ตรงกับหัว/ขอบบนกล่อง)
+                        local topPosition = hrp.Position + Vector3.new(0, 3, 0)
+                        local screenPos, onScreen = Camera:WorldToViewportPoint(topPosition)
+                        
+                        if onScreen then
+                            data.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y) -- เริ่มจากล่างจอ หรือเปลี่ยนเป็น (Camera.ViewportSize.X / 2, 0) ได้ถ้าต้องการจากบนจอ
+                            data.Tracer.To = Vector2.new(screenPos.X, screenPos.Y)
+                            data.Tracer.Visible = true
+                        else
+                            data.Tracer.Visible = false
+                        end
+                    else
+                        data.Tracer.Visible = false
+                    end
+                end
+            else
+                if data.BoxGui then data.BoxGui.Enabled = false end
+                if data.Tracer then data.Tracer.Visible = false end
+            end
+        end
+    end
+end)
+
+-- สร้างเมนู Toggle และ ColorPicker ใน Rayfield UI
+VisualsTab:CreateToggle({
+   Name = "ESP Box (กรอบสี่เหลี่ยมรอบตัว)",
+   CurrentValue = false,
+   Callback = function(Value)
+      Box_Enabled = Value
+   end,
+})
+
+VisualsTab:CreateColorPicker({
+    Name = "เปลี่ยนสีกล่อง ESP Box",
+    Color = Color3.fromRGB(0, 0, 255),
+    Callback = function(Value)
+        Box_Color = Value
+    end
+})
+
+VisualsTab:CreateToggle({
+   Name = "ESP Tracers (เส้นชี้ไปที่บนกล่อง)",
+   CurrentValue = false,
+   Callback = function(Value)
+      Tracers_Enabled = Value
+   end,
+})
+
+VisualsTab:CreateColorPicker({
+    Name = "เปลี่ยนสีเส้น Tracers",
+    Color = Color3.fromRGB(170, 0, 255),
+    Callback = function(Value)
+        Tracers_Color = Value
+    end
+})
+
+-- จัดการผู้เล่นเข้า/ออก
+Players.PlayerAdded:Connect(createESP)
+Players.PlayerRemoving:Connect(removeESP)
+
+for _, p in pairs(Players:GetPlayers()) do
+    if p ~= LocalPlayer then createESP(p) end
+end
